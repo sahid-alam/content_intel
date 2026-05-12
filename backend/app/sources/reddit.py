@@ -7,10 +7,9 @@ Limitation: no selftext body, no comment counts, score always 0.
 """
 import asyncio
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.config import settings
 from app.schemas import RawItem
 
@@ -48,7 +47,7 @@ def _parse_feed(xml_text: str, sub: str) -> list[RawItem]:
         try:
             created_utc = datetime.fromisoformat(published.replace("Z", "+00:00"))
         except ValueError:
-            created_utc = datetime.now(tz=timezone.utc)
+            created_utc = datetime.now(tz=UTC)
 
         author_el = entry.find("atom:author/atom:name", _NS)
         author = (author_el.text or "").strip() if author_el is not None else ""

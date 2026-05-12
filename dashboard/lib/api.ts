@@ -32,7 +32,7 @@ export const ItemSchema = z.object({
   created_utc: z.string(),
   fetched_at: z.string(),
   content_hash: z.string(),
-  tag: z.string().nullable().optional(),
+  tag: z.string().nullish().transform((v) => v ?? undefined),
 });
 
 export const FeedResponseSchema = z.object({
@@ -85,4 +85,63 @@ export type Usage = z.infer<typeof UsageSchema>;
 export async function getTodayUsage(): Promise<Usage> {
   const data = await apiFetch<unknown>("/feed/usage");
   return UsageSchema.parse(data);
+}
+
+// ─── Leads ───
+
+export const LeadSchema = z.object({
+  assignment_id: z.number(),
+  lead_id: z.number(),
+  item_id: z.number(),
+  title: z.string(),
+  url: z.string(),
+  source: z.string(),
+  subreddit: z.string().nullable(),
+  author: z.string(),
+  external_id: z.string(),
+  created_utc: z.string(),
+  what_they_want: z.string(),
+  budget_signal: z.enum(["none", "mentioned", "explicit"]),
+  urgency_signal: z.enum(["none", "mentioned", "explicit"]),
+  score: z.number(),
+  contact_hint: z.string().nullable(),
+  status: z.enum(["new", "reviewing", "contacted", "closed"]),
+  notes: z.string(),
+  contacted_at: z.string().nullable(),
+});
+
+export const LeadsResponseSchema = z.object({
+  leads: z.array(LeadSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export type Lead = z.infer<typeof LeadSchema>;
+export type LeadsResponse = z.infer<typeof LeadsResponseSchema>;
+
+export async function getLeads(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<LeadsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  const data = await apiFetch<unknown>(`/leads${query}`);
+  return LeadsResponseSchema.parse(data);
+}
+
+export async function patchAssignment(
+  assignmentId: number,
+  patch: { status?: string; notes?: string },
+): Promise<Lead> {
+  const data = await apiFetch<unknown>(`/leads/${assignmentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return LeadSchema.parse(data);
 }

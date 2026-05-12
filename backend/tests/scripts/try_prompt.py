@@ -9,19 +9,19 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 # Load .env from project root before importing settings
 from dotenv import load_dotenv
+
 load_dotenv(ROOT / ".env")
 
-from google import genai
-from google.genai import types
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.ai import genai_with_retry
 from app.ai.classifier import ClassificationResult, _build_prompt
 from app.config import settings
 from app.schemas import RawItem
+from google import genai
+from google.genai import types
 
-_NOW = datetime.now(tz=timezone.utc)
+_NOW = datetime.now(tz=UTC)
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "sample_posts.json"
 

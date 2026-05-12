@@ -50,3 +50,36 @@ class SyncResult(BaseModel):
     inserted: int
     skipped: int
     source: str
+
+
+class LeadOut(BaseModel):
+    assignment_id: int
+    lead_id: int
+    item_id: int
+    title: str
+    url: str
+    source: str
+    subreddit: str | None
+    author: str
+    external_id: str
+    created_utc: datetime
+    what_they_want: str
+    budget_signal: str
+    urgency_signal: str
+    score: float
+    contact_hint: str | None
+    status: str
+    notes: str
+    contacted_at: datetime | None
+
+
+class LeadsResponse(BaseModel):
+    leads: list[LeadOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class AssignmentPatch(BaseModel):
+    status: str | None = None
+    notes: str | None = None

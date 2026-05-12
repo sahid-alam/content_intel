@@ -36,6 +36,7 @@ dashboard/.vercel/
 .idea/
 .DS_Store
 
-# Claude Code notes (project-private)
+# Claude Code notes + private planning docs
 CLAUDE.md
 CLAUDE.local.md
+agent_docs/

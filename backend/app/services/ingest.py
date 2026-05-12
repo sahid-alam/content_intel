@@ -1,15 +1,16 @@
-import asyncio
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from app.ai.classifier import classify_item
+from app.ai.lead_extractor import extract_lead
+from app.ai.summarizer import summarize_item
+from app.config import settings
+from app.models import Classification, Item
+from app.schemas import RawItem, SyncResult
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.ai.classifier import classify_item
-from app.models import Classification, Item
-from app.schemas import RawItem, SyncResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +20,45 @@ def _content_hash(title: str, body: str) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-async def _classify_and_store(db: AsyncSession, item: Item, raw: RawItem) -> None:
+async def _classify_and_store(db: AsyncSession, item: Item, raw: RawItem) -> str | None:
     try:
         result = await classify_item(raw, db)
-        db.add(
-            Classification(
-                item_id=item.id,
-                tag=result.tag,
-                confidence=result.confidence,
-                reason=result.reason,
-                topics=result.topics,
-                model="gemini-classify",
-                created_at=datetime.now(tz=timezone.utc),
-            )
-        )
+        db.add(Classification(
+            item_id=item.id,
+            tag=result.tag,
+            confidence=result.confidence,
+            reason=result.reason,
+            topics=result.topics,
+            model=settings.gemini_classify_model,
+            created_at=datetime.now(tz=UTC),
+        ))
         await db.flush()
+        return result.tag
     except Exception as exc:
-        # Cap hit or API error — log and continue; item is still stored
         logger.warning("classify failed for %s: %s", raw.external_id, exc)
+        return None
+
+
+async def _summarize(db: AsyncSession, item: Item) -> None:
+    try:
+        await summarize_item(item, db)
+    except Exception as exc:
+        logger.warning("summarize failed for item %d: %s", item.id, exc)
+
+
+async def _extract(db: AsyncSession, item: Item) -> None:
+    try:
+        await extract_lead(item, db)
+    except Exception as exc:
+        logger.warning("lead extract failed for item %d: %s", item.id, exc)
+
+
+async def _process_item(db: AsyncSession, item: Item, raw: RawItem) -> None:
+    tag = await _classify_and_store(db, item, raw)
+    if tag and tag != "noise":
+        await _summarize(db, item)
+    if tag == "lead":
+        await _extract(db, item)
 
 
 async def ingest_items(db: AsyncSession, raw_items: list[RawItem], source: str) -> SyncResult:
@@ -49,7 +71,7 @@ async def ingest_items(db: AsyncSession, raw_items: list[RawItem], source: str) 
     )
     seen_ids: set[str] = {row[0] for row in existing.fetchall()}
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     inserted = 0
     skipped = 0
     new_items: list[tuple[Item, RawItem]] = []
@@ -84,15 +106,12 @@ async def ingest_items(db: AsyncSession, raw_items: list[RawItem], source: str) 
 
     await db.commit()
 
-    # Classify new items — run concurrently but cap concurrency to avoid rate-limiting
     if new_items:
-        sem = asyncio.Semaphore(5)
-
-        async def _guarded(item: Item, raw: RawItem) -> None:
-            async with sem:
-                await _classify_and_store(db, item, raw)
-
-        await asyncio.gather(*[_guarded(item, raw) for item, raw in new_items])
+        # AsyncSession is not safe for concurrent use — process items sequentially.
+        # AI calls within _process_item are still awaited one at a time but that's
+        # fine: the bottleneck is the Gemini API rate limit (15 RPM), not local compute.
+        for item, raw in new_items:
+            await _process_item(db, item, raw)
         await db.commit()
 
     return SyncResult(fetched=len(raw_items), inserted=inserted, skipped=skipped, source=source)

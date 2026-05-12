@@ -28,6 +28,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <nav className="border-b px-6 py-3 flex gap-6 text-sm font-medium">
+          <a href="/" className="hover:text-foreground/70 transition-colors">Feed</a>
+          <a href="/leads" className="hover:text-foreground/70 transition-colors">Leads</a>
+        </nav>
         {children}
       </body>
     </html>

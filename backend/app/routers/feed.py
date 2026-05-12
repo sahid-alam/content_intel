@@ -1,12 +1,11 @@
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, outerjoin, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime
 
 from app.db import get_db
 from app.models import AICallLog, Classification, Item
 from app.schemas import FeedResponse, ItemOut
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, outerjoin, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/feed", tags=["feed"])
 
@@ -46,7 +45,7 @@ async def get_feed(
 
 @router.get("/usage")
 async def get_today_usage(db: AsyncSession = Depends(get_db)) -> dict:
-    today = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     count: int = (
         await db.execute(
             select(func.count()).select_from(AICallLog).where(AICallLog.created_at >= today)

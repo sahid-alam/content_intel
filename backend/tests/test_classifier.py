@@ -1,14 +1,13 @@
 """Classifier tests — mocked Gemini response, no real API calls."""
+from datetime import UTC, datetime
 from typing import Literal, cast
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 
 import pytest
-
 from app.ai.classifier import ClassificationResult, _build_prompt, classify_item
 from app.schemas import RawItem
 
-_NOW = datetime.now(tz=timezone.utc)
+_NOW = datetime.now(tz=UTC)
 
 
 def _make_item(title: str, body: str = "", source: str = "hn", subreddit: str | None = None) -> RawItem:
@@ -29,7 +28,9 @@ def _make_item(title: str, body: str = "", source: str = "hn", subreddit: str | 
 _Tag = Literal["pain", "lead", "trend", "signal", "noise"]
 
 
-def _mock_response(tag: _Tag, confidence: float = 0.9, reason: str = "test", topics: list = []) -> MagicMock:
+def _mock_response(tag: _Tag, confidence: float = 0.9, reason: str = "test", topics: list = None) -> MagicMock:
+    if topics is None:
+        topics = []
     payload = ClassificationResult(tag=tag, confidence=confidence, reason=reason, topics=topics)
     mock = MagicMock()
     mock.text = payload.model_dump_json()

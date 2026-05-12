@@ -1,14 +1,13 @@
 import time
 from typing import Literal
 
+from app.ai import check_daily_cap, genai_with_retry, log_call
+from app.config import settings
+from app.schemas import RawItem
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.ai import check_daily_cap, genai_with_retry, log_call
-from app.config import settings
-from app.schemas import RawItem
 
 _client: genai.Client | None = None
 
@@ -31,7 +30,7 @@ TAG_DEFINITIONS = """
 class ClassificationResult(BaseModel):
     tag: Literal["pain", "lead", "trend", "signal", "noise"]
     confidence: float = Field(ge=0.0, le=1.0)
-    reason: str = Field(max_length=200)
+    reason: str = Field(max_length=500)
     topics: list[str] = Field(default_factory=list, max_length=5)
 
 
@@ -46,7 +45,7 @@ Title: {item.title}{body_section}
 Tag definitions:
 {TAG_DEFINITIONS}
 
-Classify this post. Return JSON matching the schema exactly."""
+Classify this post. Return JSON matching the schema exactly. Keep "reason" under 100 words."""
 
 
 async def classify_item(

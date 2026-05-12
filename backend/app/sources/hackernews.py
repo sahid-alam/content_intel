@@ -1,8 +1,7 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-
 from app.config import settings
 from app.schemas import RawItem
 
@@ -19,9 +18,9 @@ def _parse_hit(hit: dict) -> RawItem | None:
 
     created_ts = hit.get("created_at_i")
     if created_ts:
-        created_utc = datetime.fromtimestamp(int(created_ts), tz=timezone.utc)
+        created_utc = datetime.fromtimestamp(int(created_ts), tz=UTC)
     else:
-        created_utc = datetime.now(tz=timezone.utc)
+        created_utc = datetime.now(tz=UTC)
 
     return RawItem(
         external_id=f"hn:{story_id}",
@@ -50,7 +49,7 @@ async def _search(client: httpx.AsyncClient, path: str, params: dict) -> list[Ra
 
 async def fetch_hn(lookback_hours: int | None = None) -> list[RawItem]:
     hours = lookback_hours or settings.lookback_hours
-    since_ts = int(datetime.now(tz=timezone.utc).timestamp()) - hours * 3600
+    since_ts = int(datetime.now(tz=UTC).timestamp()) - hours * 3600
 
     keywords = [kw.strip() for kw in settings.hn_keywords.split(",") if kw.strip()]
 
