@@ -1,0 +1,92 @@
+[
+  {
+    "external_id": "hn:1001",
+    "source": "hn",
+    "subreddit": null,
+    "author": "techfounder",
+    "title": "Ask HN: Looking for someone to build an n8n workflow that syncs HubSpot contacts to a Google Sheet and sends a Slack alert on new deals",
+    "body": "We're a 5-person SaaS company. Every time a deal moves to 'Closed Won' in HubSpot we want a row added to a Google Sheet and a Slack DM sent to the AE. Happy to pay for a one-time build. Budget around $500. Has anyone done this or can point me to someone who can?",
+    "expected_tag": "lead"
+  },
+  {
+    "external_id": "reddit:2001",
+    "source": "reddit",
+    "subreddit": "automation",
+    "author": "ops_lead",
+    "title": "Need a voice AI agent for our inbound sales calls — who builds these?",
+    "body": "We get about 200 inbound calls a day. 80% are the same 10 questions. Looking for someone to build a voice agent that handles those and routes complex ones to a human. We've looked at Bland.ai and Retell but need custom integrations with our CRM. Anyone building these commercially?",
+    "expected_tag": "lead"
+  },
+  {
+    "external_id": "reddit:2002",
+    "source": "reddit",
+    "subreddit": "SaaS",
+    "author": "frustrated_founder",
+    "title": "Why is every CRM still terrible at actually tracking relationships?",
+    "body": "I've tried HubSpot, Pipedrive, Attio, and Close. They all track deals fine but none of them actually help me remember what I talked about with a contact 3 months ago or surface the right person at the right time. It's like they're built for sales ops, not salespeople.",
+    "expected_tag": "pain"
+  },
+  {
+    "external_id": "hn:1002",
+    "source": "hn",
+    "subreddit": null,
+    "author": "ai_researcher",
+    "title": "Google releases Gemini 2.5 Flash with 1M context and native tool use",
+    "body": "Google just dropped Gemini 2.5 Flash. Key updates: 1M token context window, native tool use without function calling boilerplate, 3x faster than 2.0 Flash. Available in AI Studio now. Pricing unchanged.",
+    "expected_tag": "trend"
+  },
+  {
+    "external_id": "reddit:2003",
+    "source": "reddit",
+    "subreddit": "n8n",
+    "author": "automation_builder",
+    "title": "How I automated my entire client onboarding with n8n — saved 3 hours/week",
+    "body": "Built a workflow that triggers on new Stripe payment, creates a ClickUp project from a template, sends a personalised welcome email via SendGrid, adds the client to a Notion database, and schedules a kickoff call in Calendly. Happy to share the JSON if anyone wants it.",
+    "expected_tag": "signal"
+  },
+  {
+    "external_id": "reddit:2004",
+    "source": "reddit",
+    "subreddit": "Entrepreneur",
+    "author": "random_user",
+    "title": "Monday motivation: hustle harder than yesterday 💪",
+    "body": "Just a reminder that success is 1% inspiration and 99% perspiration. Keep grinding everyone!",
+    "expected_tag": "noise"
+  },
+  {
+    "external_id": "hn:1003",
+    "source": "hn",
+    "subreddit": null,
+    "author": "smallbiz_owner",
+    "title": "Ask HN: How to automate invoice chasing for a small agency?",
+    "body": "We're a 3-person design agency. About 20% of our invoices go 30+ days overdue. I've been manually sending follow-up emails. Is there a way to automate this that integrates with FreshBooks? Or should I just hire someone to build something custom?",
+    "expected_tag": "lead"
+  },
+  {
+    "external_id": "reddit:2005",
+    "source": "reddit",
+    "subreddit": "AI_Agents",
+    "author": "dev_blogger",
+    "title": "OpenAI announces GPT-5 with real-time web access and persistent memory across conversations",
+    "body": "OpenAI dropped GPT-5 today. Main features: real-time web browsing baked in (not a tool call), persistent memory across all conversations by default, 4x context vs GPT-4o. Starting at $20/mo for Plus users.",
+    "expected_tag": "trend"
+  },
+  {
+    "external_id": "reddit:2006",
+    "source": "reddit",
+    "subreddit": "nocode",
+    "author": "nocode_builder",
+    "title": "Make.com vs n8n in 2025 — honest breakdown after using both for 6 months",
+    "body": "Used Make for client work for 2 years, switched to self-hosted n8n 6 months ago. Make wins on ease of use and support. n8n wins on cost at scale, custom code nodes, and not having your workflows break when Make changes pricing. For personal/agency use under 50k ops/mo, Make is fine. Above that, n8n every time.",
+    "expected_tag": "signal"
+  },
+  {
+    "external_id": "reddit:2007",
+    "source": "reddit",
+    "subreddit": "SaaS",
+    "author": "venter99",
+    "title": "AI tools have made my team lazier, not more productive",
+    "body": "We adopted 4 AI tools in the last year. GitHub Copilot, Notion AI, Otter.ai, and an AI email writer. Net result: code quality is down, docs are vaguer, meeting notes are useless, and emails sound like robots. Maybe I'm using them wrong but I'm genuinely considering banning them.",
+    "expected_tag": "pain"
+  }
+]

@@ -1,47 +1,38 @@
 # Data Sources
 
-## Reddit (PRAW + OAuth, not .json scraping)
+## Reddit (RSS, not PRAW/OAuth)
 
-**Why not the .json endpoint:** Reddit started returning 403 on the `.json` URLs increasingly through 2026. Public scrapers built on it are fragile and against ToS. PRAW with OAuth is free for personal/research use, gives 60 req/min instead of the unauthenticated 10, and is what Reddit officially supports.
+**Why RSS, not the API:** As of May 2026, Reddit requires all non-Devvit developer access to go through explicit approval (Responsible Builder Policy). Script-type OAuth apps (`reddit.com/prefs/apps`) now redirect to this policy page and cannot be created without approval. Reddit's Devvit platform is for building apps *inside* Reddit — it doesn't support reading posts into an external pipeline. Filing for commercial-use API access is slow and not guaranteed.
 
-**Setup (one-time, ~3 min):**
-1. Go to https://www.reddit.com/prefs/apps
-2. Click "create another app" at the bottom
-3. Choose "script" type
-4. Name: `content-intel-local`. Redirect URI: `http://localhost:8080`
-5. Note the client ID (under the app name) and the secret
-6. Put both in `.env`:
-   ```
-   REDDIT_CLIENT_ID=...
-   REDDIT_CLIENT_SECRET=...
-   REDDIT_USER_AGENT=content-intel/0.1 by /u/yourusername
-   ```
-   The user agent format Reddit wants: `<platform>:<app-name>:<version> (by /u/<username>)`
+Reddit's public RSS feeds (`/r/<sub>/new.rss`) require no credentials, have no meaningful rate limits at our volume, and give us title, URL, author, score, and timestamp — everything the pipeline needs. Comments are not available via RSS; this means we can't fetch comment threads for leads (planned for Phase 4 enrichment). That's an acceptable tradeoff vs. waiting for API approval.
+
+**No setup required.** No credentials, no `.env` entries. Just configure subreddit list.
+
+**Blocking risk:** RSS feeds are public and served to any browser — Reddit cannot distinguish our fetcher from someone loading `/new` in a browser. At our volume (7 subs × 1 fetch/6h = ~28 requests/day) we are well below any threshold that would trigger a block. If Reddit ever adds auth to RSS (unlikely — it would break every RSS reader and Reddit's own embeds), the fallback is to use `old.reddit.com/r/{sub}/new.json` which has historically been more permissive than the main API, or to request API access at that point. For now, RSS is the right call.
 
 **Implementation pattern (`backend/app/sources/reddit.py`):**
-- Use `asyncpraw` (PRAW's async fork), not sync PRAW. We're fanning out across many subs.
-- One `Reddit` client per process; reuse across calls.
-- Configurable subreddit list in `app/config.py`. Default starting set:
-  - `r/SaaS`, `r/Entrepreneur`, `r/AI_Agents`, `r/automation`, `r/n8n`, `r/nocode`, `r/smallbusiness`
-- For each sub, fetch top of `new` and top of `top?t=day`. Most lead signal is in `new`; `top` gives engagement validation.
+- Use `httpx.AsyncClient` (already a dependency). Fan out across all configured subs with `asyncio.gather`.
+- Fetch `https://www.reddit.com/r/{sub}/new.rss?limit=100` for each sub.
+- Parse XML with `xml.etree.ElementTree` (stdlib, no extra dep).
+- Extract post ID from the `<id>` tag (`t3_<id>` format).
 - Normalize to `RawItem`:
   ```python
   RawItem(
-      external_id=f"reddit:{submission.id}",
+      external_id=f"reddit:{post_id}",
       source="reddit",
-      subreddit=submission.subreddit.display_name,
-      author=submission.author.name if submission.author else "[deleted]",
-      title=submission.title,
-      body=submission.selftext or "",
-      url=f"https://reddit.com{submission.permalink}",
-      score=submission.score,
-      num_comments=submission.num_comments,
-      created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
-      raw=submission_to_dict(submission),  # for debugging only
+      subreddit=sub,
+      author=entry.find("author/name").text or "",
+      title=entry.find("title").text or "",
+      body="",  # RSS doesn't include selftext
+      url=entry.find("link").get("href") or "",
+      score=0,   # RSS doesn't include score; set 0
+      num_comments=0,
+      created_utc=datetime.fromisoformat(entry.find("published").text),
+      raw={},
   )
   ```
-- Rate limit handling: PRAW handles this internally if you respect its ratelimit warnings. Set `ratelimit_seconds=300` on the client so it sleeps rather than 429s.
-- **Comments**: only fetch comments for items the classifier flagged as `lead` (someone asking for help). The comment thread is what makes a lead actionable. Use `submission.comments.replace_more(limit=0)` then walk top 20.
+- Configurable subreddit list in `app/config.py`. Default set:
+  `r/SaaS`, `r/Entrepreneur`, `r/AI_Agents`, `r/automation`, `r/n8n`, `r/nocode`, `r/smallbusiness`
 
 ## Hacker News (Algolia API, not Firebase)
 

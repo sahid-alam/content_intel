@@ -1,49 +1,64 @@
 # How to start with Claude Code
 
-Once you've put your keys in `.env`, run this from the project root:
+Once you've put your keys in `.env` and created the Drive folder, run this from the project root:
 
 ```bash
 claude
 ```
 
-Then paste the following as your first message:
+Paste this as your first message:
 
 ---
 
-I want you to read `CLAUDE.md` and `agent_docs/build_order.md` first. Don't read the other docs in `agent_docs/` upfront — pull them on demand as each phase needs them.
+Read `CLAUDE.md` and `agent_docs/build_order.md` first. Don't read the other docs upfront — pull them on demand per phase.
 
-Here's the operating mode I want for this build:
+Operating mode:
 
-1. We build in phases. The phases are defined in `agent_docs/build_order.md`. Don't skip ahead.
+1. We build in phases per `agent_docs/build_order.md`. v1 is phases 0-7 (local SQLite, single user). v2 (phases 8-10) is deployment and won't start until I explicitly green-light it after 2-4 weeks of v1 use.
 
-2. At the start of each phase, before writing code:
-   - Read the doc(s) relevant to that phase
-   - Show me a 5-10 line plan: files you'll create, files you'll modify, and what the demo at the end of the phase looks like
+2. Each phase, before writing code:
+   - Read the doc(s) relevant to the phase
+   - Show me a 5-10 line plan (files, demo)
    - Wait for my "go"
 
 3. While implementing:
-   - Pydantic for everything that crosses a boundary
-   - Async by default (asyncpraw, httpx, async SQLAlchemy)
-   - Test AI prompts on `tests/fixtures/sample_posts.json` before wiring (see `.claude/skills/prompt-fixture-test/SKILL.md`)
-   - Never call Gemini 3.1 Pro on raw scraped content — always Flash-Lite first
+   - Pydantic at Python boundaries, Zod at TypeScript boundaries
+   - Python async by default (asyncpraw, httpx, async SQLAlchemy)
+   - Next.js Server Components by default; `'use client'` only when needed
+   - **`user_id` threaded through every personal query, hardcoded to `"self"` in v1.** This is non-negotiable. See `agent_docs/data_model.md`.
+   - No Gemini Pro calls anywhere. Flash-Lite + Gemma only. If you think a feature needs Pro, stop and ask.
+   - Sheet `status` and `notes` columns are human-owned. Exporter never overwrites. See `data_model.md` reconciliation flow.
+   - Test AI prompts on `tests/fixtures/sample_posts.json` first. See `.claude/skills/prompt-fixture-test/SKILL.md`.
 
-4. At the end of each phase:
-   - Run `/verify` (see `.claude/commands/verify.md`)
-   - Tell me the exact commands to demo the phase and what I should see
-   - Stop. Don't start the next phase until I say so.
+4. End of each phase:
+   - Run `/verify`
+   - Tell me the exact demo commands and what I should see
+   - Stop. Wait for me.
 
-5. Things you should always ask me about, not assume:
-   - Adding a new dependency that wasn't in `pyproject.toml`
-   - Changing the data model after Phase 4
-   - Anything that touches `voice_profile.md`
-   - Schema changes that need a real Alembic migration (vs dropping dev DB)
+5. Always ask before:
+   - Adding a dep not in `pyproject.toml` or `dashboard/package.json`
+   - Schema changes after Phase 4
+   - Anything touching `voice_profile.md`
+   - Anything that would require a real Alembic migration (vs drop dev DB)
+   - Drive API scope changes after Phase 5
 
 Start with Phase 0. Show me the plan, then wait.
 
 ---
 
-Tips while building:
+## Tips while building
 
-- If Claude Code suggests something that contradicts a doc, point it at the specific doc section. The docs are authoritative.
-- If a phase is taking too long, run `/clear` and start a fresh session — re-load just that phase's relevant docs. Long sessions degrade quality.
-- After Phase 5 you'll have a tool that's actually useful. Use it for a week before building Phase 6 polish — you'll learn what's actually missing.
+- Docs are authoritative. If Claude Code contradicts a doc, point at the section.
+- If a phase drags, `/clear` and reload only that phase's relevant docs. Long sessions degrade quality.
+- After Phase 5 (exporters), open the Doc in Drive yourself before building the drafter. Confirm the section format is what you actually want.
+- After Phase 6 (drafter), use the dashboard drafter for one full week before judging if you need the Cowork path. They serve different jobs.
+
+## Manual steps (Phase 7)
+
+Cowork Project setup is yours, not Claude Code's:
+
+1. In Cowork, create a Project named "Content Intel — Yourname"
+2. Upload `voice_profile.md` and `agency_context.md` as Project knowledge
+3. Paste the "Project instructions" block from `agent_docs/cowork_workflow.md`
+4. Enable Google Drive connector for the Project
+5. Test with the prompts in the "Operating playbook" section

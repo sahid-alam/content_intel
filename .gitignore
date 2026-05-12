@@ -1,5 +1,6 @@
 .env
 .env.local
+.env.production
 .venv/
 __pycache__/
 *.pyc
@@ -15,18 +16,26 @@ data.db-shm
 *.bak
 
 # Personal — don't commit your voice
-frontend/voice_profile.md
-frontend/public/voice_profile.md
+dashboard/voice_profile.md
+dashboard/public/voice_profile.md
+backend/agency_context.md
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+# Google OAuth
+backend/.gcp/
+*.token.json
+client_secret_*.json
+
+# Next.js
+dashboard/.next/
+dashboard/out/
+dashboard/node_modules/
+dashboard/.vercel/
 
 # Editor
 .vscode/
 .idea/
 .DS_Store
 
-# Claude Code local notes (uncomment if you use them)
+# Claude Code notes (project-private)
+CLAUDE.md
 CLAUDE.local.md

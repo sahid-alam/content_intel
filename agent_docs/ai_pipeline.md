@@ -1,22 +1,20 @@
 # AI Pipeline
 
-## The two-tier model strategy (and why)
-
-You have Google AI Pro, which gives you both Gemini 3.1 Pro and the Flash-Lite tier with elevated rate limits and monthly API credits. The right way to use this is **not** to send everything to Pro.
+## Model strategy (all free, all on your Google AI Pro quota)
 
 | Step | Model | Why |
 |---|---|---|
-| Classification (every new item) | Gemini 2.5 Flash-Lite | $0.10/$0.40 per 1M tokens. Often free at our volume. Structured output is reliable on simple taxonomies. |
-| Summarization (items that survived classification) | Gemini 2.5 Flash-Lite | Same cost story. 3-bullet summary is a Flash-tier task. Cached by content_hash forever. |
-| LinkedIn draft generation | Gemini 3.1 Pro | $2/$12 per 1M. Fires only when the user clicks "generate." Voice and judgment matter here. |
-| Lead-magnet outline | Gemini 3.1 Pro | Same as drafts — synthesis across many items is where Pro earns its cost. |
-| Lead scoring (rule-based) | No model | Engagement metrics + classifier tag + author signals. No reason to spend tokens on this. |
+| Classification | `gemini-3.1-flash-lite` | 15 RPM / 500 RPD on your account. Structured output reliable. |
+| Summarization | `gemini-3.1-flash-lite` | Same model, same quota. Cached forever by content_hash. |
+| Lead extraction | `gemini-3.1-flash-lite` | Same. Only fires on lead-tagged items. |
+| Dashboard drafts | `gemma-4-31b` | 15 RPM / 1,500 RPD, unlimited TPM. Free. Good enough for fast triage drafts. |
+| Premium drafts + lead magnets | Cowork (Claude subscription) | Voice fidelity + iteration. Not in this codebase. |
 
-Hard rule from `CLAUDE.md`: **never call 3.1 Pro on raw scraped content**. Always run Flash-Lite filtering + summarization first, then pass the *summary* to Pro. This typically cuts Pro input tokens by 90%+ and is the difference between staying inside subscription credits vs blowing through them.
+**Hard rule from `CLAUDE.md`: no `gemini-3.1-pro` or `gemini-2.5-pro` calls anywhere.** Pro-tier work moves to Cowork, which runs on your Claude subscription, not the Gemini API. This keeps the Python project entirely inside free quotas.
 
 ## SDK
 
-Use the unified `google-genai` SDK (the new one), not the older `google-generativeai`. The old one is deprecated.
+Use the unified `google-genai` SDK (the new one), not the older `google-generativeai`.
 
 ```python
 from google import genai
@@ -25,11 +23,11 @@ from google.genai import types
 client = genai.Client(api_key=settings.gemini_api_key)
 ```
 
-API key comes from AI Studio → "Get API key" while signed in to your Google AI Pro account. With Pro, this key inherits your subscription's elevated quota.
+Same client for Gemini and Gemma models — just change the `model` parameter.
 
 ## Classifier (`ai/classifier.py`)
 
-Single-item, structured-output classification. Returns one of: `pain`, `lead`, `trend`, `signal`, `noise`.
+Single-item, structured output. One of: `pain`, `lead`, `trend`, `signal`, `noise`.
 
 ```python
 from pydantic import BaseModel, Field
@@ -43,7 +41,7 @@ class Classification(BaseModel):
 
 async def classify(item: RawItem) -> Classification:
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash-lite",
+        model="gemini-3.1-flash-lite",
         contents=_build_prompt(item),
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -55,49 +53,63 @@ async def classify(item: RawItem) -> Classification:
     return Classification.model_validate_json(response.text)
 ```
 
-**Tag definitions (in the prompt, exactly):**
-- `pain`: Person is venting about a real problem they have but is not asking for a build or service. Useful as content fodder, not a lead.
-- `lead`: Person is asking how to build / who can build / what tool to use for something we could build for them. Direct intent. Examples: "Looking for someone to build me an n8n workflow that...", "How do I automate X across Slack and HubSpot?", "Need a voice agent that..."
-- `trend`: News/release/discussion about a tool, technique, or industry shift relevant to AI/automation/agents. Useful for content.
-- `signal`: Useful but doesn't fit above — e.g. someone publicly sharing what worked, a teardown, a technique.
-- `noise`: Memes, drama, off-topic, low-signal venting, generic complaints. Stored but never passed downstream.
+**Tag definitions (use verbatim in the prompt):**
+- `pain`: Person is venting about a real problem but not asking for a build/service. Content fodder, not a lead.
+- `lead`: Person is asking how to build / who can build / what tool to use for something we could build. Direct intent. Examples: "Looking for someone to build me an n8n workflow that...", "How do I automate X across Slack and HubSpot?", "Need a voice agent that..."
+- `trend`: News/release/discussion about a tool, technique, or shift relevant to AI/automation/agents.
+- `signal`: Useful but doesn't fit above — someone sharing what worked, a teardown, a technique.
+- `noise`: Memes, drama, off-topic, generic complaints. Stored but never advances.
 
 ## Summarizer (`ai/summarizer.py`)
 
-Runs on items NOT tagged `noise`. Outputs:
+Runs on non-noise items. Outputs:
 ```python
 class Summary(BaseModel):
-    one_liner: str = Field(max_length=140)        # for feed cards
-    bullets: list[str] = Field(min_length=2, max_length=4)  # for drafts/exports
-    key_quote: str | None = Field(default=None, max_length=200)  # if there's a memorable line
+    one_liner: str = Field(max_length=140)
+    bullets: list[str] = Field(min_length=2, max_length=4)
+    key_quote: str | None = Field(default=None, max_length=200)
 ```
 
-Cache key: `content_hash`. Store the JSON in the DB, not in memory. Multiple downstream consumers read the same summary.
+Cache key: `content_hash`. Store JSON in DB, not memory. Multiple consumers (feed view, drafter, Doc exporter) read the same summary.
 
 ## Lead extractor (`ai/lead_extractor.py`)
 
-For items tagged `lead`, do a second targeted Flash-Lite pass to extract:
+For lead-tagged items, a targeted Flash-Lite pass:
 ```python
 class LeadDetails(BaseModel):
     asker_username: str
-    what_they_want: str = Field(max_length=300)        # plain English description of the build
-    pain_signals: list[str] = Field(max_length=5)      # specific frustrations they mention
+    what_they_want: str = Field(max_length=300)
+    pain_signals: list[str] = Field(max_length=5)
     budget_signal: Literal["explicit", "implicit", "none"]
     urgency_signal: Literal["urgent", "soon", "exploring", "unclear"]
-    contact_hint: str | None = None                    # e.g., "DM open", "email in profile"
+    contact_hint: str | None = None  # "DM open", "email in profile", etc.
 ```
 
-This is what powers the CSV export and the lead-scoring rules.
+Powers both the Sheet export and the dashboard Leads view.
 
-## Generator (`ai/generator.py`) — Gemini 3.1 Pro
+## Drafter (`ai/drafter.py`) — Gemma 4 31B
 
-Two endpoints, both fire on user action only:
+Fires only on user action: clicking "Draft this" on a feed item, or selecting multiple items and clicking "Draft from selection."
 
-### `generate_linkedin_draft(item_ids: list[int], style: str)`
+```python
+async def generate_draft(item_ids: list[int], voice_profile: str) -> str:
+    items = await get_items_with_summaries(item_ids)
+    prompt = _build_draft_prompt(items, voice_profile)
+    response = await client.aio.models.generate_content(
+        model="gemma-4-31b",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.7,
+            max_output_tokens=600,
+        ),
+    )
+    return response.text.strip()
+```
 
-Inputs: 1-3 already-summarized items + the user's voice profile (loaded from `frontend/voice_profile.md`, see below). Output: a single LinkedIn post draft, 150-220 words, formatted with line breaks LinkedIn renders well.
+Note: Gemma models don't support structured output schemas the way Gemini Flash does. Don't try to force JSON output from Gemma — let it return plain text and parse downstream if needed.
 
-Prompt structure:
+### Prompt structure for `generate_draft`
+
 ```
 You are drafting a LinkedIn post in {user_name}'s voice.
 
@@ -119,29 +131,16 @@ CONSTRAINTS:
 - One concrete number, name, or quote from the source material in the first 3 lines
 - Do not link out (LinkedIn de-prioritizes posts with external links)
 
-Return only the post text. No preamble.
+Return only the post text. No preamble, no explanation.
 ```
 
-### `generate_lead_magnet_outline(cluster_id: int)`
+### Generating variants
 
-A "cluster" is N lead-tagged items grouped by topic via simple keyword overlap. Generates a structured outline:
-- Working title
-- Reader (1 sentence)
-- Promise (1 sentence)
-- 5-7 chapter headlines drawn from actual recurring pain points in the cluster
-- Suggested CTA tied to your agency's services
-
-This is the highest-leverage Pro call — one outline can become a $5k engagement.
-
-## Cost guardrails (implement in `ai/__init__.py`)
-
-- Soft daily cap: 2,000 Flash-Lite calls/day, 50 Pro calls/day. Configurable in `.env`.
-- Hard fail when caps hit; surface in the dashboard as a banner. Never silently fall back to a different model.
-- Log every call to a `ai_call_log` table: model, tokens_in, tokens_out, cost_estimate, timestamp. The dashboard has a "spend this month" widget reading from this.
+Gemma is fast and free. When the user clicks "Draft this," generate **3 variants** in parallel (3x `asyncio.gather`) and show them as tabs in the UI. Picking the best of three is meaningfully better than iterating on one — and at zero cost you should.
 
 ## Voice profile
 
-Create `frontend/voice_profile.md` (gitignored — personal). Template:
+Create `frontend/voice_profile.md` (gitignored). Template:
 ```
 TONE: direct, technical, occasionally dry. No hype.
 NEVER USE: "in today's fast-paced world", "game-changer", "revolutionize", "unleash"
@@ -151,4 +150,23 @@ EXAMPLES OF MY ACTUAL POSTS:
 [paste 3-5 of your real LinkedIn posts here]
 ```
 
-The generator loads this file on every Pro call. Update it whenever your style evolves.
+The drafter loads this file on every call. Update it whenever your style evolves. The **same file** is uploaded to your Cowork Project so both surfaces use the same voice reference. See `cowork_workflow.md`.
+
+## Cost guardrails (implement in `ai/__init__.py`)
+
+Caps are per UTC day, configurable via `.env`:
+- `DAILY_FLASH_CALL_CAP=400` (default; leaves headroom under the 500 RPD limit)
+- `DAILY_GEMMA_CALL_CAP=1000` (default; under the 1,500 RPD limit on Gemma 4 31B)
+- Hard fail when caps hit; banner in the dashboard. Never silently degrade.
+- Log every call to `ai_call_log` table: model, tokens_in, tokens_out, duration_ms. Dashboard reads this for the "today's usage" pill.
+
+## Why no Pro tier
+
+Three reasons:
+1. **Cowork is better for the work Pro would do.** Voice fidelity comes from accumulated context (past posts as files, persistent memory, conversational iteration). A single API call can't match a conversation in a Project with that context built up.
+2. **Pro requires pay-per-request billing**, which means linking a card and managing a credit balance. Avoidable complexity for a personal tool.
+3. **The dashboard's job is speed, not perfection.** Gemma 4 31B at ~60-70% first-draft usability is the right tradeoff when generation is free and fast. For the other 30-40% of drafts you'd want to polish, you have Cowork.
+
+## Switching models later
+
+If Gemma 4 31B quality is genuinely insufficient and you've validated this over two weeks of real use (not vibes), the swap is one config change: `GEMINI_DRAFT_MODEL=gemini-3.1-pro` in `.env`, plus enable pay-per-request billing in AI Studio. Code doesn't change. But: try the Cowork path first. That's what it's there for.

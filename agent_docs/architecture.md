@@ -1,73 +1,104 @@
 # Architecture
 
-## Data flow (end to end)
+## Two deployments, one source of truth
 
 ```
-        ┌───────────────────────────────────────────────┐
-        │  Scheduler (APScheduler, every 6h by default) │
-        └─────────────────────┬─────────────────────────┘
-                              ▼
-   ┌─────────────────────────────────────────────────────┐
-   │   sources/reddit.py        sources/hackernews.py    │
-   │   - PRAW + OAuth           - HN Algolia API         │
-   │   - configurable subs      - configurable queries   │
-   │   - polite rate limiting   - no auth needed         │
-   └────────────────────┬───────┴─────────────────────────┘
-                        ▼
-              ┌────────────────────┐
-              │   services/ingest  │   ← dedupe by external_id, hash content
-              └─────────┬──────────┘
-                        ▼
-              ┌────────────────────┐
-              │  ai/classifier     │   ← Gemini 2.5 Flash-Lite (cheap, fast)
-              │  Tag: pain, lead,  │     bulk pass: 1 call per item, structured output
-              │  trend, signal,    │
-              │  noise             │
-              └─────────┬──────────┘
-                        ▼ (only items tagged pain/lead/trend continue)
-              ┌────────────────────┐
-              │  ai/summarizer     │   ← Flash-Lite again, cached by content hash
-              │  3-bullet summary  │
-              └─────────┬──────────┘
-                        ▼
-                ┌──────────────┐
-                │   SQLite     │   ← canonical store, drives all UI reads
-                └──────┬───────┘
-                       ▼
-       ┌───────────────────────────────────────┐
-       │            FastAPI routers            │
-       │  /feed   /leads   /drafts   /export   │
-       └───────────────────┬───────────────────┘
-                           ▼
-                    React dashboard
-                    (on demand: /drafts/{id}/generate
-                     fires Gemini 3.1 Pro)
+                                    ┌─────────────────────────────────┐
+                                    │  Scheduler (APScheduler, 6h)    │
+                                    └──────────────┬──────────────────┘
+                                                   ▼
+                            ┌────────────────────────────────────────┐
+                            │  PYTHON SERVICE                        │
+                            │  v1: laptop · v2: Fly.io/Hetzner       │
+                            │                                        │
+                            │  ┌──────────────────────────────────┐  │
+                            │  │ sources/  ingest/  ai/  exporters│  │
+                            │  └──────────────────────────────────┘  │
+                            │  ┌──────────────────────────────────┐  │
+                            │  │ FastAPI: /feed /leads /drafts    │  │
+                            │  │         /sync /export            │  │
+                            │  └──────────────────────────────────┘  │
+                            └────────────────┬───────────────────────┘
+                                             ▼
+                                    ┌────────────────┐
+                                    │  Database      │
+                                    │  v1: SQLite    │
+                                    │  v2: Supabase  │
+                                    └────────┬───────┘
+                                             ▲
+                                             │ reads/writes via HTTP (v1)
+                                             │ or Supabase client (v2)
+                                             │
+                            ┌────────────────┴───────────────────────┐
+                            │  NEXT.JS DASHBOARD                     │
+                            │  v1: localhost  ·  v2: Vercel          │
+                            │                                        │
+                            │  Server Components (Feed/Leads/Drafts) │
+                            │  Server Actions (mutations)            │
+                            │  Auth (none v1; Supabase Auth v2)      │
+                            └────────────────────────────────────────┘
+
+                            (Parallel path, same source data:)
+                                             │
+                                             ▼
+                                  ┌─────────────────────┐
+                                  │  Google Doc + Sheet │
+                                  │  (curated material) │
+                                  └──────────┬──────────┘
+                                             ▼
+                                  ┌─────────────────────┐
+                                  │   Cowork Project    │
+                                  │   (per-user voice)  │
+                                  └─────────────────────┘
 ```
+
+## Why this split
+
+**Vercel is for HTTP, not for background workers.** Vercel serverless functions die at 60s. Your sync runs 30-90s. So the dashboard goes on Vercel, the pipeline doesn't.
+
+**The dashboard never talks to the pipeline directly.** Dashboard reads/writes via the API (v1) or via Supabase (v2). Pipeline writes to the DB on its own schedule. They communicate only through stored state. Either can be down without breaking the other.
+
+**Exporters are a layer, not a step.** They read from the DB, not from the ingest pipeline. So a failing classifier doesn't poison the Doc; a failing Drive sync doesn't block the classifier.
 
 ## Why each layer exists
 
-**Sources are isolated, never call AI directly.** `reddit.py` and `hackernews.py` only fetch and normalize to a common `RawItem` shape. Mixing scraping with AI logic makes both harder to test and rate-limit. If a source breaks, the rest of the pipeline keeps running.
+**Sources** (`reddit.py`, `hackernews.py`) — normalize Reddit submissions + HN items to a single `RawItem` shape. Isolated so a broken source doesn't take down the rest.
 
-**Ingest is the dedupe boundary.** Same post can appear in multiple sub-queries. Same HN story can show up in "top" and "by_date." Ingest is where we hash, look up by `external_id`, and skip if seen. This is also where we attach a `content_hash` so AI outputs can be cached.
+**Ingest** (`services/ingest.py`) — dedupe boundary. Hash content; lookup `external_id`; skip if seen. Attaches `content_hash` so AI outputs cache forever.
 
-**Classifier runs on everything; the expensive models do not.** The classifier is the single most important cost control. It runs Flash-Lite once per new item with a structured-output schema returning `{tag, confidence, reason}`. Items tagged `noise` are stored but never sent to a more expensive model. This is the difference between $5/month and $200/month at any meaningful volume.
+**Classifier** (`ai/classifier.py`) — Flash-Lite, structured output (`pain` / `lead` / `trend` / `signal` / `noise`). The cost gate: noise stops here; everything else advances.
 
-**Summarizer is cache-keyed.** Content rarely changes after posting. Once we have a summary for `content_hash X`, never re-summarize. Cached summaries are reused for both the feed view and as input to draft generation.
+**Summarizer** (`ai/summarizer.py`) — Flash-Lite, cached by `content_hash`. One summary per piece of content, reused by feed view, drafter, and Doc exporter.
 
-**Generator (Gemini 3.1 Pro) only fires on user action.** No background "generate drafts for everything." Drafts are generated when the user clicks the button on a specific item. This keeps Pro-tier spend correlated with actual usage, not background crawling.
+**Lead extractor** (`ai/lead_extractor.py`) — Flash-Lite, structured. Runs only on lead-tagged items. Feeds the leads table.
 
-## Why FastAPI, not Flask
-- **Async-native.** When the user clicks "Sync now," we want to fan out: Reddit subs in parallel, HN queries in parallel, classifier batches in parallel. Flask makes this awkward.
-- **Pydantic-first.** Models defined once, used as request schema, response schema, and (with ORM mode) DB serialization.
-- **Auto-docs.** `/docs` gives Swagger UI for free — useful when you want to wire this into n8n or Make later.
+**Drafter** (`ai/drafter.py`) — Gemma 4 31B, 3 variants in parallel. Fires only on user action (clicking "Draft this"). Free, fast, good enough for triage.
 
-## Why SQLite, not Postgres
-- Single-user, local-first tool. Postgres adds a daemon, port, password, and zero capability you'll use.
-- WAL mode handles the concurrency we'll see (one scheduler writer + one API reader).
-- If the tool ever gets multi-user, the swap to Postgres is a 5-line `DATABASE_URL` change since SQLAlchemy abstracts it.
+**Exporters** (`exporters/`) — push from DB to Google Drive. Append-only on the Doc; upsert on the Sheet (preserving human-owned columns).
 
-## What's deliberately not in v1
-- Auth (single-user local tool — adding auth is busywork)
-- Vector search / embeddings (keyword + tag filtering is enough for the volumes we'll see; revisit if the dataset grows past ~50k items)
-- LinkedIn API integration (manual copy-paste is fine; LinkedIn API approval is a months-long process not worth it for v1)
-- Hosted deployment (this runs on your laptop; if you want it always-on later, a $5 Hetzner box + systemd is one afternoon)
+**FastAPI** — thin wrapper around the DB for the dashboard. Goes away at v2 (Next.js talks to Supabase directly).
+
+## Why Next.js (and not Vite, Flask, etc.)
+
+- **One framework, one deployment for the dashboard.** UI and any BFF logic live together.
+- **Server Components fetch data without an API layer when we move to v2.** Less code, less to maintain.
+- **Vercel free tier is genuinely generous** for the dashboard's traffic (you + 1 partner).
+- **Server Actions handle mutations** cleanly without manual fetch+revalidate dance.
+
+We use it for the **dashboard only**. Pipeline stays Python because Python has the libraries (asyncpraw, google-genai, APScheduler) and runs as a long-lived process, not as request-response.
+
+## Why Cowork is a separate surface, not a feature
+
+You could build "premium drafts" in the dashboard with a different model. We don't because:
+1. Cowork has persistent memory, voice files as Project knowledge, and conversational iteration — building that in-house is months of work
+2. It runs on your existing Claude subscription, not the Gemini API
+3. The Doc/Sheet are a natural interface — readable by Cowork, also useful for you to skim manually
+
+The dashboard handles speed; Cowork handles depth. Different jobs, different tools.
+
+## What's deliberately out of scope
+
+- LinkedIn API integration (partner approval is months; copy-paste works)
+- Real-time websockets (polling on focus is enough at this volume)
+- Embeddings (v1 keyword overlap is fine; revisit at ~50k items)
+- Pro-tier Gemini calls (Cowork covers premium synthesis)

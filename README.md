@@ -1,68 +1,74 @@
 # Content Intelligence Pipeline
 
-Local-first tool that pulls Reddit + Hacker News, runs items through a two-tier Gemini pipeline, and produces:
-- A filterable feed of classified discussions (pain / lead / trend / signal / noise)
+Local tool that pulls Reddit + Hacker News, classifies discussions via Gemini, and produces:
+- A filterable feed of classified posts (pain / lead / trend / signal / noise)
 - A warm-lead list — people publicly asking for help with builds you can do
-- One-click LinkedIn post drafts grounded in real, current discussions
-- Lead-magnet outlines structured around recurring pain points
+- One-click LinkedIn post drafts via Gemma 4 31B
+- Premium drafts + lead magnet outlines via Cowork (Claude subscription)
 
-## Why this exists
+## Architecture
 
-If you run a Gen-AI dev agency, three things you do every week are: write LinkedIn content that gets engagement, find clients who actively want what you sell, and turn observed pain into pitch material. All three live in the same source data — the public discussions where your buyers complain. This tool makes that loop systematic.
+Two deployments, one source of truth:
+- **Pipeline (Python)** — scrapes, classifies, exports to Google Drive. v1: laptop. v2: Fly.io/Hetzner.
+- **Dashboard (Next.js)** — Feed, Leads, Drafts UI. v1: localhost. v2: Vercel.
 
-## Stack
-
-- **Backend:** FastAPI, async SQLAlchemy + SQLite, asyncpraw (Reddit), httpx (HN Algolia), google-genai
-- **Frontend:** Vite + React + TypeScript + Tailwind + TanStack Query
-- **Models:** Gemini 2.5 Flash-Lite (bulk classification + summarization) + Gemini 3.1 Pro (drafts + outlines)
+See `agent_docs/architecture.md` for the diagram.
 
 ## Prerequisites
 
-- Python 3.11+
-- Node 20+
-- `uv` ([install](https://docs.astral.sh/uv/getting-started/installation/))
-- Google AI Pro subscription (for the elevated Gemini API quota — set up once at https://aistudio.google.com/app/apikey)
-- Reddit account (free; takes 2 min to register an app at https://www.reddit.com/prefs/apps)
+- Python 3.11+, `uv` ([install](https://docs.astral.sh/uv/getting-started/installation/))
+- Node 20+, pnpm
+- Google AI Pro subscription
+- Reddit account
+- Google account for Drive integration
 
-## Setup
+## Setup (v1, local)
 
 ```bash
 # Clone, then:
-cp .env.example .env   # fill in GEMINI_API_KEY, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT
+cp .env.example .env   # fill in GEMINI_API_KEY, REDDIT_*, GOOGLE_DRIVE_FOLDER_ID
 
-uv sync                # install Python deps
-uv run alembic upgrade head   # create the DB
+# Backend
+uv sync
+uv run alembic upgrade head
 
-cd frontend
-npm install
+# Frontend
+cd dashboard
+pnpm install
 cd ..
 ```
 
 ## Run
 
-In one terminal:
+Terminal 1:
 ```bash
 uv run uvicorn backend.app.main:app --reload
 ```
 
-In another:
+Terminal 2:
 ```bash
-cd frontend && npm run dev
+cd dashboard && pnpm dev
 ```
 
-Open http://localhost:5173 and click "Sync now."
+Open http://localhost:3000 → click "Sync now."
 
 ## Building it
 
-This repo was designed to be built with [Claude Code](https://claude.com/claude-code) following `agent_docs/build_order.md`. Start with:
+This repo is designed to be built phase-by-phase with [Claude Code](https://claude.com/claude-code) following `agent_docs/build_order.md`. Start with:
 
 ```bash
 claude
 > /build-phase 0
 ```
 
-…and walk through phases 0-6. Each phase is a working demo state.
+…and walk through phases 0-7 for v1. v2 (deployment) is phases 8-10, only after you've used v1 for 2-4 weeks.
 
 ## Layout
 
-See `CLAUDE.md` for the project layout and `agent_docs/` for detailed module docs.
+- `backend/` — Python pipeline + FastAPI
+- `dashboard/` — Next.js App Router
+- `agent_docs/` — module docs (Claude reads on demand)
+- `.claude/` — skills + slash commands
+- `CLAUDE.md` — project context entry point
+
+See `CLAUDE.md` for the full layout and conventions.

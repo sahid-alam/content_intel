@@ -1,0 +1,88 @@
+import { z } from "zod";
+
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BACKEND_URL}${path}`, { cache: "no-store", ...init });
+  if (!res.ok) throw new Error(`API ${path} returned ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+// ─── Health ───
+
+export type HealthResponse = { status: string };
+
+export async function getHealth(): Promise<HealthResponse> {
+  return apiFetch<HealthResponse>("/health");
+}
+
+// ─── Feed ───
+
+export const ItemSchema = z.object({
+  id: z.number(),
+  external_id: z.string(),
+  source: z.string(),
+  subreddit: z.string().nullable(),
+  author: z.string(),
+  title: z.string(),
+  body: z.string(),
+  url: z.string(),
+  score: z.number(),
+  num_comments: z.number(),
+  created_utc: z.string(),
+  fetched_at: z.string(),
+  content_hash: z.string(),
+  tag: z.string().nullable().optional(),
+});
+
+export const FeedResponseSchema = z.object({
+  items: z.array(ItemSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export type Item = z.infer<typeof ItemSchema>;
+export type FeedResponse = z.infer<typeof FeedResponseSchema>;
+
+export async function getFeed(params?: {
+  source?: string;
+  tag?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<FeedResponse> {
+  const qs = new URLSearchParams();
+  if (params?.source) qs.set("source", params.source);
+  if (params?.tag) qs.set("tag", params.tag);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  const data = await apiFetch<unknown>(`/feed${query}`);
+  return FeedResponseSchema.parse(data);
+}
+
+// ─── Sync ───
+
+export const SyncResultSchema = z.object({
+  fetched: z.number(),
+  inserted: z.number(),
+  skipped: z.number(),
+  source: z.string(),
+});
+
+export type SyncResult = z.infer<typeof SyncResultSchema>;
+
+export async function triggerSync(): Promise<SyncResult[]> {
+  const data = await apiFetch<unknown>("/sync", { method: "POST" });
+  return z.array(SyncResultSchema).parse(data);
+}
+
+// ─── Usage ───
+
+export const UsageSchema = z.object({ calls_today: z.number() });
+export type Usage = z.infer<typeof UsageSchema>;
+
+export async function getTodayUsage(): Promise<Usage> {
+  const data = await apiFetch<unknown>("/feed/usage");
+  return UsageSchema.parse(data);
+}
