@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { patchAssignment, triggerSync } from "@/lib/api";
+import { patchAssignment, triggerExport, triggerSync } from "@/lib/api";
 
 export async function syncNow() {
   const results = await triggerSync();
@@ -15,4 +15,10 @@ export async function updateAssignment(
 ) {
   await patchAssignment(assignmentId, patch);
   revalidatePath("/leads");
+}
+
+export async function exportNow() {
+  const result = await triggerExport();
+  revalidatePath("/settings");
+  return result;
 }

@@ -145,3 +145,34 @@ export async function patchAssignment(
   });
   return LeadSchema.parse(data);
 }
+
+// ─── Export ───
+
+export const ExportStatusSchema = z.object({
+  doc_url: z.string().nullable(),
+  sheet_url: z.string().nullable(),
+  drive_folder_url: z.string().nullable(),
+  google_auth_ok: z.boolean(),
+});
+
+export const ExportResultSchema = z.object({
+  doc_url: z.string().nullable(),
+  doc_appended: z.number(),
+  sheet_url: z.string().nullable(),
+  sheet_upserted: z.number(),
+  sheet_mirrored: z.number(),
+  exported_at: z.string(),
+});
+
+export type ExportStatus = z.infer<typeof ExportStatusSchema>;
+export type ExportResult = z.infer<typeof ExportResultSchema>;
+
+export async function getExportStatus(): Promise<ExportStatus> {
+  const data = await apiFetch<unknown>("/export/status");
+  return ExportStatusSchema.parse(data);
+}
+
+export async function triggerExport(): Promise<ExportResult> {
+  const data = await apiFetch<unknown>("/export/now", { method: "POST" });
+  return ExportResultSchema.parse(data);
+}

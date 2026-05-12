@@ -112,3 +112,26 @@ class AICallLog(Base):
     tokens_out: Mapped[int] = mapped_column(Integer)
     duration_ms: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class DocSyncLog(Base):
+    __tablename__ = "doc_sync_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
+    doc_id: Mapped[str] = mapped_column(String(128), index=True)
+    week_iso: Mapped[str] = mapped_column(String(8), index=True)
+    section_heading: Mapped[str] = mapped_column(String(300))
+    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SheetSyncLog(Base):
+    __tablename__ = "sheet_sync_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("lead_assignments.id"), unique=True, index=True)
+    sheet_id: Mapped[str] = mapped_column(String(128))
+    row_index: Mapped[int] = mapped_column(Integer)
+    last_written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_known_status: Mapped[str] = mapped_column(String(16))
+    last_known_notes: Mapped[str] = mapped_column(Text, default="")

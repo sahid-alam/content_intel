@@ -40,6 +40,7 @@ ignore = ["E501", "B008", "B905"]  # B008: Depends() in defaults is required Fas
 
 [tool.ruff.lint.per-file-ignores]
 "backend/tests/scripts/*.py" = ["E402"]  # sys.path + load_dotenv must precede app imports
+"backend/scripts/*.py" = ["E402"]  # same: sys.path + load_dotenv must precede app imports
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
