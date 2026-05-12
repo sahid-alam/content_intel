@@ -20,7 +20,7 @@ SCOPES = [
 
 # Config paths like "backend/.gcp/token.json" are relative to the project root,
 # but the server runs from backend/. Resolve from this file's anchor instead.
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
 def _resolve(path: str) -> str:
