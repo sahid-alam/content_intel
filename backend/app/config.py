@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     gemini_classify_model: str = "gemini-3.1-flash-lite"
     gemini_summarize_model: str = "gemini-3.1-flash-lite"
     gemini_extract_model: str = "gemini-3.1-flash-lite"
-    gemini_draft_model: str = "gemma-3-27b-it"
+    gemini_draft_model: str = "gemma-4-31b-it"
 
     # Reddit (RSS — no credentials needed)
     reddit_subreddits: str = "SaaS,Entrepreneur,AI_Agents,automation,n8n,nocode,smallbusiness"

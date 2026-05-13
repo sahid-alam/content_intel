@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db import Base, engine
-from app.routers import export, feed, leads, sync
+from app.routers import drafts, export, feed, leads, sync
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -24,6 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(drafts.router)
 app.include_router(export.router)
 app.include_router(feed.router)
 app.include_router(leads.router)

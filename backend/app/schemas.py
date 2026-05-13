@@ -83,3 +83,53 @@ class LeadsResponse(BaseModel):
 class AssignmentPatch(BaseModel):
     status: str | None = None
     notes: str | None = None
+
+
+# ─── Drafts ───
+
+class DraftOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: str
+    kind: str
+    item_ids: list[int]
+    body: str
+    model: str
+    variant_index: int
+    published_at: datetime | None
+    created_at: datetime
+
+
+class DraftsResponse(BaseModel):
+    drafts: list[DraftOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class GenerateDraftRequest(BaseModel):
+    item_ids: list[int]
+    notes: str = ""
+
+
+class GeneratedVariant(BaseModel):
+    variant_index: int
+    body: str
+
+
+class GenerateResponse(BaseModel):
+    variants: list[GeneratedVariant]
+    model: str
+
+
+class SaveDraftRequest(BaseModel):
+    item_ids: list[int]
+    body: str
+    variant_index: int = 0
+    kind: str = "linkedin_post"
+
+
+class DraftPatch(BaseModel):
+    body: str | None = None
+    published_at: datetime | None = None

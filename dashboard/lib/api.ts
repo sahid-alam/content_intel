@@ -176,3 +176,93 @@ export async function triggerExport(): Promise<ExportResult> {
   const data = await apiFetch<unknown>("/export/now", { method: "POST" });
   return ExportResultSchema.parse(data);
 }
+
+// ─── Drafts ───
+
+export const DraftSchema = z.object({
+  id: z.number(),
+  user_id: z.string(),
+  kind: z.string(),
+  item_ids: z.array(z.number()),
+  body: z.string(),
+  model: z.string(),
+  variant_index: z.number(),
+  published_at: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export const DraftsResponseSchema = z.object({
+  drafts: z.array(DraftSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export const GeneratedVariantSchema = z.object({
+  variant_index: z.number(),
+  body: z.string(),
+});
+
+export const GenerateResponseSchema = z.object({
+  variants: z.array(GeneratedVariantSchema),
+  model: z.string(),
+});
+
+export type Draft = z.infer<typeof DraftSchema>;
+export type DraftsResponse = z.infer<typeof DraftsResponseSchema>;
+export type GeneratedVariant = z.infer<typeof GeneratedVariantSchema>;
+export type GenerateResponse = z.infer<typeof GenerateResponseSchema>;
+
+export async function getDrafts(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<DraftsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  const data = await apiFetch<unknown>(`/drafts${query}`);
+  return DraftsResponseSchema.parse(data);
+}
+
+export async function generateDrafts(
+  itemIds: number[],
+  notes?: string,
+): Promise<GenerateResponse> {
+  const data = await apiFetch<unknown>("/drafts/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_ids: itemIds, notes: notes ?? "" }),
+  });
+  return GenerateResponseSchema.parse(data);
+}
+
+export async function saveDraft(payload: {
+  item_ids: number[];
+  body: string;
+  variant_index: number;
+  kind?: string;
+}): Promise<Draft> {
+  const data = await apiFetch<unknown>("/drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "linkedin_post", ...payload }),
+  });
+  return DraftSchema.parse(data);
+}
+
+export async function patchDraft(
+  draftId: number,
+  patch: { body?: string; published_at?: string | null },
+): Promise<Draft> {
+  const data = await apiFetch<unknown>(`/drafts/${draftId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return DraftSchema.parse(data);
+}
+
+export async function deleteDraft(draftId: number): Promise<void> {
+  await apiFetch<unknown>(`/drafts/${draftId}`, { method: "DELETE" });
+}
