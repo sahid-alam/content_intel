@@ -80,7 +80,20 @@ class HumanEdit:
     new_notes: str
 
 
+def _ensure_tab(sheets, sheet_id: str, tab: str) -> None:
+    """Create the named tab if it doesn't already exist."""
+    meta = sheets.spreadsheets().get(spreadsheetId=sheet_id, fields="sheets.properties.title").execute()
+    existing_titles = {s["properties"]["title"] for s in meta.get("sheets", [])}
+    if tab not in existing_titles:
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": tab}}}]},
+        ).execute()
+        logger.info("Created sheet tab '%s' in spreadsheet %s", tab, sheet_id)
+
+
 def _get_sheet_data(sheets, sheet_id: str, tab: str) -> list[list[str]]:
+    _ensure_tab(sheets, sheet_id, tab)
     result = (
         sheets.spreadsheets()
         .values()
