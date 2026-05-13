@@ -36,6 +36,8 @@ async def _classify_and_store(db: AsyncSession, item: Item, raw: RawItem) -> str
         return result.tag
     except Exception as exc:
         logger.warning("classify failed for %s: %s", raw.external_id, exc)
+        # Rollback any failed flush so the session stays usable for subsequent items.
+        await db.rollback()
         return None
 
 
@@ -44,6 +46,7 @@ async def _summarize(db: AsyncSession, item: Item) -> None:
         await summarize_item(item, db)
     except Exception as exc:
         logger.warning("summarize failed for item %d: %s", item.id, exc)
+        await db.rollback()
 
 
 async def _extract(db: AsyncSession, item: Item) -> None:
@@ -51,6 +54,7 @@ async def _extract(db: AsyncSession, item: Item) -> None:
         await extract_lead(item, db)
     except Exception as exc:
         logger.warning("lead extract failed for item %d: %s", item.id, exc)
+        await db.rollback()
 
 
 async def _process_item(db: AsyncSession, item: Item, raw: RawItem) -> None:
