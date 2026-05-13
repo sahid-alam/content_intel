@@ -45,6 +45,7 @@ class DocExportResult:
     week_iso: str
     appended: int
     skipped: int
+    exported_item_ids: list[int]  # IDs that were actually written (empty if batch failed)
 
 
 def _week_iso() -> str:
@@ -106,20 +107,15 @@ def _build_section_text(row: DocItemRow) -> str:
     return "\n".join(body_parts)
 
 
-def _append_to_doc(docs, doc_id: str, text: str) -> None:
+def _batch_append_to_doc(docs, doc_id: str, texts: list[str]) -> None:
+    """Insert all texts in a single batchUpdate (one get + one write call)."""
     doc = docs.documents().get(documentId=doc_id).execute()
     end_index = doc["body"]["content"][-1]["endIndex"] - 1
-
-    requests = [
-        {
-            "insertText": {
-                "location": {"index": end_index},
-                "text": text,
-            }
-        }
-    ]
+    # Concatenate and insert in one request to stay under Docs write quota (60/min).
+    combined = "".join(texts)
     docs.documents().batchUpdate(
-        documentId=doc_id, body={"requests": requests}
+        documentId=doc_id,
+        body={"requests": [{"insertText": {"location": {"index": end_index}, "text": combined}}]},
     ).execute()
 
 
@@ -141,27 +137,32 @@ def _sync_items_to_doc_sync(
         logger.info("Created new Doc: %s (%s)", title, doc_id)
 
     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-    appended = 0
     skipped = 0
+    new_rows: list[DocItemRow] = []
 
     for row in rows:
         if row.item_id in already_exported:
             skipped += 1
             continue
+        new_rows.append(row)
+
+    exported_item_ids: list[int] = []
+    if new_rows:
+        texts = [_build_section_text(r) for r in new_rows]
         try:
-            text = _build_section_text(row)
-            _append_to_doc(docs, doc_id, text)
-            appended += 1
+            _batch_append_to_doc(docs, doc_id, texts)
+            exported_item_ids = [r.item_id for r in new_rows]
         except HttpError as exc:
-            logger.warning("Doc append failed for item %d: %s", row.item_id, exc)
-            skipped += 1
+            logger.warning("Doc batch append failed: %s", exc)
+            skipped += len(new_rows)
 
     return DocExportResult(
         doc_id=doc_id,
         doc_url=doc_url,
         week_iso=week,
-        appended=appended,
+        appended=len(exported_item_ids),
         skipped=skipped,
+        exported_item_ids=exported_item_ids,
     )
 
 

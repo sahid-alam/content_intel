@@ -221,16 +221,17 @@ async def export_now(
     # ── Write sync logs back to DB ──
     now = datetime.now(tz=UTC)
 
-    # Doc sync log: record newly-exported items
-    for row in doc_rows:
-        if row.item_id not in already_exported:
-            db.add(DocSyncLog(
-                item_id=row.item_id,
-                doc_id=doc_result.doc_id,
-                week_iso=doc_result.week_iso,
-                section_heading=f"[{row.tag.upper()}] {row.title[:200]}",
-                written_at=now,
-            ))
+    # Doc sync log: record only items that were actually written to the doc
+    row_by_id = {r.item_id: r for r in doc_rows}
+    for item_id in doc_result.exported_item_ids:
+        row = row_by_id[item_id]
+        db.add(DocSyncLog(
+            item_id=item_id,
+            doc_id=doc_result.doc_id,
+            week_iso=doc_result.week_iso,
+            section_heading=f"[{row.tag.upper()}] {row.title[:200]}",
+            written_at=now,
+        ))
 
     # Sheet sync log: upsert per assignment
     existing_logs_result = await db.execute(
